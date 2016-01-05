@@ -9,6 +9,9 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use std.textio.all;
+
+library vunit_lib;
+
 use work.lang.all;
 use work.textio.all;
 use work.string_ops.all;
@@ -410,4 +413,3 @@ package body log_special_types_pkg is
 
   end protected body logger_t;
 end package body log_special_types_pkg;
-
