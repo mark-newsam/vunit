@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Copyright (c) 2015, Lars Asplund lars.anders.asplund@gmail.com
+# Copyright (c) 2015-2016, Lars Asplund lars.anders.asplund@gmail.com
 
 """
 Interface towards Aldec Riviera Pro
@@ -12,7 +12,7 @@ Interface towards Aldec Riviera Pro
 from __future__ import print_function
 
 from vunit.ostools import Process, write_file, file_exists
-from vunit.simulator_interface import SimulatorInterface
+from vunit.simulator_interface import SimulatorInterface, contains_executable
 from os.path import join, dirname, abspath
 import os
 import re
@@ -60,8 +60,10 @@ class RivieraProInterface(SimulatorInterface):
 
     @classmethod
     def _find_prefix(cls):
-        return cls.find_toolchain(["vsim",
-                                   "vsimsa"])
+        for path in cls.find_executable_paths("vsim"):
+            if not contains_executable(path, "vsimsa"):
+                continue
+            return path
 
     @classmethod
     def is_available(cls):

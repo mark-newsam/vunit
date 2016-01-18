@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Copyright (c) 2014-2015, Lars Asplund lars.anders.asplund@gmail.com
+# Copyright (c) 2014-2016, Lars Asplund lars.anders.asplund@gmail.com
 
 """
 Interface towards Mentor Graphics ModelSim
@@ -12,7 +12,9 @@ Interface towards Mentor Graphics ModelSim
 from __future__ import print_function
 
 from vunit.ostools import Process, write_file, read_file, file_exists
-from vunit.simulator_interface import SimulatorInterface
+from vunit.simulator_interface import (SimulatorInterface,
+                                       contains_executable,
+                                       os_executable_name)
 from os.path import join, dirname, abspath
 import os
 from argparse import ArgumentTypeError
@@ -87,11 +89,31 @@ class ModelSimInterface(SimulatorInterface):  # pylint: disable=too-many-instanc
         Find first valid modelsim toolchain prefix
         """
 
-        def has_modelsim_ini(path):
-            return os.path.isfile(join(path, "..", "modelsim.ini"))
+        for path0 in cls.find_executable_paths("vsim"):
 
-        return cls.find_toolchain(["vsim"],
-                                  constraints=[has_modelsim_ini])
+            # For users symlinking vsim into for instance /usr/local/bin
+            # See Issue #96
+            executable0 = join(path0, os_executable_name("vsim"))
+
+            for executable in symlink_chain(executable0):
+                path = dirname(executable)
+
+                if not contains_executable(path, "vsim"):
+                    continue
+
+                if not os.path.isfile(join(path, "..", "modelsim.ini")):
+                    continue
+
+                if not contains_executable(path, "vcom"):
+                    continue
+
+                if not contains_executable(path, "vlog"):
+                    continue
+
+                if not contains_executable(path, "vlib"):
+                    continue
+
+                return path
 
     @classmethod
     def is_available(cls):
@@ -113,6 +135,7 @@ class ModelSimInterface(SimulatorInterface):  # pylint: disable=too-many-instanc
         self._lock = threading.Lock()
         self._transcript_id = 0
         self._prefix = self._find_prefix()
+        LOGGER.debug("Using ModelSim from %s", self._prefix)
 
         if self._prefix is None:
             raise RuntimeError("Cannot find ModelSim any toolchain.")
@@ -707,3 +730,15 @@ def encode_generic_value(value):
         return '{"%s"}' % s_value
     else:
         return s_value
+
+
+def symlink_chain(file_name):
+    """
+    Return file_name and all symlink destinations thereof
+    """
+
+    results = [abspath(file_name)]
+    while os.path.islink(file_name):
+        file_name = os.readlink(file_name)
+        results.append(abspath(file_name))
+    return results
