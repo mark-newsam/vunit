@@ -57,7 +57,7 @@ class Project(object):
                          "http://www.sigasi.com/content/work-not-vhdl-library")
             raise RuntimeError("Illegal library name 'work'")
 
-    def add_library(self, logical_name, directory, allow_replacement=False, is_external=False):
+    def add_library(self, logical_name, directory, allow_replacement=False, is_external=False, vhdl_standard=None):
         """
         Add library to project with logical_name located or to be located in directory
         allow_replacement -- Allow replacing an existing library
@@ -65,16 +65,18 @@ class Project(object):
         """
         self._validate_library_name(logical_name)
         if logical_name not in self._libraries:
-            library = Library(logical_name, directory, is_external=is_external)
+            library = Library(logical_name, directory, is_external=is_external, vhdl_standard=vhdl_standard)
             self._libraries[logical_name] = library
             LOGGER.debug('Adding library %s with path %s', logical_name, directory)
         else:
             assert allow_replacement
-            library = Library(logical_name, directory, is_external=is_external)
+            library = Library(logical_name, directory, is_external=is_external, vhdl_standard=vhdl_standard)
             self._libraries[logical_name] = library
             LOGGER.debug('Replacing library %s with path %s', logical_name, directory)
 
-    def add_source_file(self, file_name, library_name, file_type='vhdl', include_dirs=None, defines=None):
+    def add_source_file(self,    # pylint: disable=too-many-arguments
+                        file_name, library_name, file_type='vhdl', include_dirs=None, defines=None,
+                        vhdl_standard=None):
         """
         Add a file_name as a source file in library_name with file_type
         """
@@ -87,7 +89,9 @@ class Project(object):
 
         if file_type == "vhdl":
             assert include_dirs is None
-            source_file = VHDLSourceFile(file_name, library, vhdl_parser=self._vhdl_parser)
+            if vhdl_standard is None:
+                vhdl_standard = library.get_vhdl_standard()
+            source_file = VHDLSourceFile(file_name, library, vhdl_parser=self._vhdl_parser, vhdl_standard=vhdl_standard)
             library.add_vhdl_design_units(source_file.design_units)
         elif file_type == "verilog":
             source_file = VerilogSourceFile(file_name, library, self._verilog_parser, include_dirs, defines)
@@ -400,13 +404,14 @@ class Library(object):  # pylint: disable=too-many-instance-attributes
     """
     Represents a VHDL library
     """
-    def __init__(self, name, directory, is_external=False):
+    def __init__(self, name, directory, is_external=False, vhdl_standard=None):
         self.name = name
         self.directory = directory
 
         self._source_files = {}
 
         # VHDL specific
+        self._vhdl_standard = vhdl_standard
         # Entity objects
         self._entities = {}
         self._package_bodies = {}
@@ -436,6 +441,12 @@ class Library(object):  # pylint: disable=too-many-instance-attributes
         Get source file with file name or raise KeyError
         """
         return self._source_files[file_name]
+
+    def get_vhdl_standard(self):
+        """
+        Return the default VHDL standard used for this libraries source files
+        """
+        return self._vhdl_standard
 
     @property
     def is_external(self):
@@ -697,13 +708,20 @@ class VHDLSourceFile(SourceFile):
     """
     Represents a VHDL source file
     """
-    def __init__(self, name, library, vhdl_parser):
+    def __init__(self, name, library, vhdl_parser, vhdl_standard):
         SourceFile.__init__(self, name, library, 'vhdl')
         self.dependencies = []
         self.depending_components = []
+        self._vhdl_standard = vhdl_standard
         code = ostools.read_file(self.name)
         self._content_hash = hash_string(code)
         self.parse(code, vhdl_parser)
+
+    def get_vhdl_standard(self):
+        """
+        Return the VHDL standard used to create this file
+        """
+        return self._vhdl_standard
 
     def parse(self, code, parser):
         """
