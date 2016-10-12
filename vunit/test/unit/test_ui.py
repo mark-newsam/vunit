@@ -374,7 +374,8 @@ Listed 2 files""".splitlines()))
                                                                 "lib",
                                                                 file_type="verilog",
                                                                 include_dirs=all_include_dirs,
-                                                                defines=None)
+                                                                defines=None,
+                                                                vhdl_standard='2008')
         ui = self._create_ui()
         check(lambda: ui.add_source_files(file_name, "lib", include_dirs=include_dirs))
 
@@ -405,7 +406,8 @@ Listed 2 files""".splitlines()))
                                                                 "lib",
                                                                 file_type="verilog",
                                                                 include_dirs=all_include_dirs,
-                                                                defines=defines)
+                                                                defines=defines,
+                                                                vhdl_standard='2008')
         ui = self._create_ui()
         check(lambda: ui.add_source_files(file_name, "lib", defines=defines))
 

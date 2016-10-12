@@ -161,7 +161,7 @@ class ModelSimInterface(SimulatorInterface):  # pylint: disable=too-many-instanc
             with open(self._modelsim_ini, 'wb') as fwrite:
                 fwrite.write(fread.read())
 
-    def setup_library_mapping(self, project, vhdl_standard):
+    def setup_library_mapping(self, project):
         """
         Setup library mapping
         """

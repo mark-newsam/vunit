@@ -127,7 +127,7 @@ from vunit.vunit_cli import VUnitCLI
 from vunit.simulator_factory import SimulatorFactory
 from vunit.color_printer import (COLOR_PRINTER,
                                  NO_COLOR_PRINTER)
-from vunit.project import Project, file_type_of
+from vunit.project import Project, file_type_of, check_vhdl_standard
 from vunit.test_runner import TestRunner
 from vunit.test_report import TestReport
 from vunit.test_scanner import TestScanner, TestScannerError, tb_filter
@@ -265,6 +265,7 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         self._create_project()
         self._num_threads = num_threads
         self._exit_0 = exit_0
+        self._library_facades = {}
 
         if compile_builtins:
             self.add_builtins(library_name="vunit_lib")
@@ -337,7 +338,8 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         Add a library managed by VUnit.
 
         :param library_name: The name of the library
-        :param vhdl_standard: The VHDL standard used to compile files into this library
+        :param vhdl_standard: The VHDL standard used to compile files into this library,
+                              if None the VUNIT_VHDL_STANDARD environment variable is used
         :returns: The created :class:`.Library` object
 
         :example:
@@ -349,9 +351,8 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         """
         if vhdl_standard is None:
             vhdl_standard = self._vhdl_standard
-        vhdl_standard = select_vhdl_standard(vhdl_standard)
         path = join(self._simulator_factory.simulator_output_path, "libraries", library_name)
-        self._project.add_library(library_name, abspath(path), vhdl_standard=vhdl_standard)
+        self._project.add_library(library_name, abspath(path))
         return self._create_library_facade(library_name, vhdl_standard)
 
     def library(self, library_name):
@@ -368,8 +369,14 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
     def _create_library_facade(self, library_name, vhdl_standard=None):
         """
         Create a Library object to be exposed to users
+
+        Re-use Library facade instances internally since vhdl_standard is contained in them
         """
-        return Library(library_name, self, self._project, self._configuration, vhdl_standard)
+        if library_name in self._library_facades:
+            return self._library_facades[library_name]
+        facade = Library(library_name, self, self._project, self._configuration, vhdl_standard)
+        self._library_facades[library_name] = facade
+        return facade
 
     def set_generic(self, name, value):
         """
@@ -519,7 +526,8 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         :param include_dirs: A list of include directories
         :param defines: A dictionary containing Verilog defines to be set
         :param allow_empty: To disable an error if no files matched the pattern
-        :param vhdl_standard: The VHDL standard used to compile these files, if None library value used
+        :param vhdl_standard: The VHDL standard used to compile these files,
+                              if None VUNIT_VHDL_STANDARD environment variable is used
         :returns: A list of files (:class:`.SourceFileList`) which were added
 
         :example:
@@ -532,7 +540,8 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         if _is_iterable_not_string(files):
             files = [files]
 
-        check_vhdl_standard(vhdl_standard)
+        if vhdl_standard is None:
+            vhdl_standard = self._vhdl_standard
 
         file_names = []
         for pattern in files:
@@ -557,7 +566,8 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         :param library_name: The name of the library to add the file into
         :param include_dirs: A list of include directories
         :param defines: A dictionary containing Verilog defines to be set
-        :param vhdl_standard: The VHDL standard used to compile this file, if None library value used
+        :param vhdl_standard: The VHDL standard used to compile this file,
+                              if None VUNIT_VHDL_STANDARD environment variable is used
         :returns: The :class:`.SourceFile` which was added
 
         :example:
@@ -572,8 +582,9 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         if file_type == "verilog":
             include_dirs = include_dirs if include_dirs is not None else []
             include_dirs = add_verilog_include_dir(include_dirs)
-        else:
-            check_vhdl_standard(vhdl_standard)
+
+        if vhdl_standard is None:
+            vhdl_standard = self._vhdl_standard
 
         file_name = self._preprocess(library_name, abspath(file_name), preprocessors)
         return SourceFile(self._project.add_source_file(file_name,
@@ -780,7 +791,7 @@ class VUnit(object):  # pylint: disable=too-many-instance-attributes, too-many-p
         """
         Compile entire project
         """
-        simulator_if.compile_project(self._project, self._vhdl_standard,
+        simulator_if.compile_project(self._project,
                                      continue_on_error=self._keep_compiling)
 
     def _run_test(self, test_cases, report):
@@ -999,7 +1010,7 @@ class Library(object):
         :param include_dirs: A list of include directories
         :param defines: A dictionary containing Verilog defines to be set
         :param allow_empty: To disable an error if no files matched the pattern
-        :param vhdl_standard: The VHDL standard used to compile these files, if None library value used
+        :param vhdl_standard: The VHDL standard used to compile these files, if None library default is used
         :returns: A list of files (:class:`.SourceFileList`) which were added
 
         :example:
@@ -1009,6 +1020,10 @@ class Library(object):
            library.add_source_files("*.vhd")
 
         """
+
+        if vhdl_standard is None:
+            vhdl_standard = self._vhdl_standard
+
         return self._parent.add_source_files(pattern, self._library_name, preprocessors, include_dirs, defines,
                                              allow_empty=allow_empty, vhdl_standard=vhdl_standard)
 
@@ -1019,7 +1034,7 @@ class Library(object):
         :param file_name: The name of the file
         :param include_dirs: A list of include directories
         :param defines: A dictionary containing Verilog defines to be set
-        :param vhdl_standard: The VHDL standard used to compile this file, if None library value used
+        :param vhdl_standard: The VHDL standard used to compile this file, if None library default is used
         :returns: The :class:`.SourceFile` which was added
 
         :example:
@@ -1029,6 +1044,9 @@ class Library(object):
            library.add_source_file("file.vhd")
 
         """
+        if vhdl_standard is None:
+            vhdl_standard = self._vhdl_standard
+
         return self._parent.add_source_file(pattern, self._library_name, preprocessors, include_dirs, defines,
                                             vhdl_standard)
 
@@ -1523,23 +1541,12 @@ class SourceFile(object):
             raise ValueError(source_file)
 
 
-def check_vhdl_standard(vhdl_standard):
-    """
-    Check the VHDL standard selected
-    Note 'None' is okay as it will be replaced officially later
-    """
-    assert vhdl_standard in (None, '93', '2002', '2008'), "Unknown VHDL standard '%s'" % vhdl_standard
-
-
-def select_vhdl_standard(vhdl_standard=None):
+def select_vhdl_standard():
     """
     Select VHDL standard according to environment variable VUNIT_VHDL_STANDARD
-
-    :param vhdl_standard: The VHDL standard to be used if 'None' use environment variable
     """
-    if vhdl_standard is None:
-        vhdl_standard = os.environ.get('VUNIT_VHDL_STANDARD', '2008')
-    assert vhdl_standard in ('93', '2002', '2008'), "Unknown VHDL standard '%s'" % vhdl_standard
+    vhdl_standard = os.environ.get('VUNIT_VHDL_STANDARD', '2008')
+    check_vhdl_standard(vhdl_standard, from_str="VUNIT_VHDL_STANDARD environment variable")
     return vhdl_standard
 
 
